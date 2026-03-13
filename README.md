@@ -234,3 +234,71 @@ Blueprint: Use the "Heartbeat monitoring" blueprint.
 Target: Paste your API Gateway or ALB URL.
 
 What it does: It spins up a hidden, headless Lambda function that acts like a real Google Chrome browser, hits your website every minute, takes a screenshot, and reports if it failed.
+
+
+# Secrets Manager and SSM Parameter Store
+Blueprint 1: AWS Secrets Manager (The Premium Vault)
+Use this if the prompt asks for Auto-Rotation, RDS Integration, or Cross-Account Access.
+
+🏗️ How to Create It (Console)
+Go to Secrets Manager ➔ Store a new secret.
+
+Secret type: If it's for RDS, select Credentials for Amazon RDS (this allows auto-rotation). If it's just a random API key, select Other type of secret.
+
+Key/Value pairs: Enter your keys (e.g., Key: password, Value: SuperSecret123!).
+
+Encryption Key: Select your Customer Managed Key (CMK) or leave as the default aws/secretsmanager. Click Next.
+
+Secret name: Give it a path-like name (e.g., prod/database/mysql). Click Next.
+
+Rotation: Leave disabled unless the prompt specifically asks you to configure a rotation Lambda function. Click Store.
+
+🛠️ How to Fetch It (The CLI Cheat Code)
+When you SSH into your EC2 instance or write your Bash script, use this exact command to pull the pure JSON string out:
+
+```Bash
+aws secretsmanager get-secret-value \
+    --secret-id prod/database/mysql \
+    --query SecretString \
+    --output text
+```
+🛡️ Blueprint 2: SSM Parameter Store (The FinOps Hero)
+Use this if the prompt asks for Cost Optimization (Free), or storing Configuration Data alongside secrets.
+
+🏗️ How to Create It (Console)
+Go to Systems Manager ➔ Left Menu: Parameter Store ➔ Create parameter.
+
+Name: It must start with a slash if you want to use hierarchies (e.g., /prod/database/password).
+
+Tier: Select Standard (Free tier!).
+
+Type (The Golden Trap): Select SecureString. (If you select String, it saves the password in plain text and you instantly fail the Security pillar!)
+
+KMS Key ID: Select your CMK or the default alias/aws/ssm.
+
+Value: Type in the actual password. Click Create.
+
+🛠️ How to Fetch It (The CLI Cheat Code)
+When you are on your EC2 instance, use this command. Notice the crucial --with-decryption flag. If you forget this, AWS will hand you the encrypted gibberish instead of the password!
+
+```Bash
+aws ssm get-parameter \
+    --name "/prod/database/password" \
+    --with-decryption \
+    --query "Parameter.Value" \
+    --output text
+```
+🚨 The Universal IAM "Fault Finding" Trap for Both
+If your EC2 instance or Lambda function times out or gets an AccessDeniedException when running those commands, check these two exact permissions in their IAM Execution Role:
+
+If they used Secrets Manager:
+
+secretsmanager:GetSecretValue (Pointed at the Secret ARN)
+
+kms:Decrypt (Pointed at the KMS Key used to encrypt the secret)
+
+If they used SSM Parameter Store:
+
+ssm:GetParameter (Pointed at the Parameter ARN)
+
+kms:Decrypt (Pointed at the KMS Key used to encrypt the parameter)
