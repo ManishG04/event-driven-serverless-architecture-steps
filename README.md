@@ -141,3 +141,96 @@ kms:Decrypt for Key A (So it can read the incoming message from SQS).
 kms:Encrypt and kms:GenerateDataKey for Key B (So it can securely write the processed data into DynamoDB).
 
 If Lambda only has permission for Key A, it will read the queue perfectly, but crash with an AccessDeniedException the millisecond it tries to talk to DynamoDB.
+
+
+# CloudWatch
+
+## 🪵 1. CloudWatch Logs (The Source of Truth)
+This is where application errors (Lambda, API Gateway) and network rejections (VPC Flow Logs) live.
+
+Step 1: Set Retention (Cost Optimization): By default, logs stay forever.
+
+How: Go to Log Groups -> Select your group -> Actions -> Edit retention setting -> Change to 14 or 30 days. (Automatic points!).
+
+Step 2: Create a Metric Filter (Operational Excellence): You did this yesterday! It extracts data from raw text.
+
+How: Log Groups -> Select group -> Metric filters -> Create metric filter.
+
+Filter Pattern: Use ?ERROR ?Exception ?Fail to catch multiple types of errors.
+
+Metric Value: Set to 1. Now, every time "ERROR" appears, CloudWatch plots a "1" on a graph.
+
+Step 3: Logs Insights (The Detective's Cheat Code): When a judge says, "Find the IP address that caused the 500 error," do not scroll through text manually!
+
+How: Go to Logs Insights -> Select your Log Group.
+
+The Query: Use this exact syntax to find the most recent errors:
+
+Plaintext
+fields @timestamp, @message
+| filter @message like /Error/
+| sort @timestamp desc
+| limit 20
+Click Run Query.
+
+## 📈 2. CloudWatch Metrics (The Heartbeat)
+Metrics are the numbers (CPU, Latency, Invocations).
+
+Step 1: Standard vs. Custom: AWS provides standard metrics for free (every 1 minute to 5 minutes). If your script pushes its own data, it's a Custom Metric.
+
+Step 2: High-Resolution Metrics:
+
+How: When pushing a custom metric via the CLI or Boto3, set StorageResolution=1. This tracks data every 1 second instead of 1 minute. (Massive flex for real-time dashboards).
+
+Step 3: Metric Math: (You conquered this!)
+
+How: Go to All Metrics -> Graph metrics. Add two metrics (e.g., m1 = 5xx Errors, m2 = Total Requests).
+
+Add Math: Click "Add math" -> m1 / m2 * 100. This instantly creates a live "Error Rate Percentage" graph.
+
+## 🚨 3. CloudWatch Alarms (The Automation Trigger)
+An alarm watches a metric. If the metric crosses a line, the alarm fires.
+
+Step 1: Static vs. Anomaly:
+
+Static: "Fire if CPU > 80%."
+
+Anomaly Detection (The Architect Move): Select "Anomaly detection" instead of a static number. CloudWatch uses Machine Learning to learn your normal traffic pattern and only alarms if traffic acts weirdly. (Judges love seeing ML applied to Ops).
+
+Step 2: The "Action" Trap (Crucial):
+
+An alarm that just turns red is useless. You MUST configure the "Actions" tab.
+
+How: Actions -> Send a message to an SNS Topic (which emails the admins) OR trigger an Auto Scaling Group to add more EC2 instances.
+
+Step 3: Composite Alarms:
+
+How: Create Alarm -> Composite Alarm.
+
+Why: "Only wake me up IF (CPU > 90%) AND (Database Latency > 2 seconds)." This prevents alert fatigue.
+
+## 🖥️ 4. CloudWatch Dashboards (The Command Center)
+This is what the judges will look at to see if you succeeded.
+
+Step 1: Cross-Region / Cross-Account Dashboards:
+
+You don't need a separate dashboard for us-east-1 and us-west-2. You can add widgets from multiple regions onto one master screen.
+
+Step 2: Dynamic Widgets:
+
+Don't just add line graphs. Use the Number widget for current error counts, and the Gauge widget for CPU utilization.
+
+Pro-Tip: Add a Text widget (using Markdown) at the top of your dashboard explaining what the dashboard does. "Welcome to the Serverless Admin Dashboard." It shows incredible polish.
+
+## 🕵️‍♂️ 5. CloudWatch Synthetics (The User Experience)
+If the prompt asks: "Ensure the website is actually returning a 200 OK status every minute."
+
+Step 1: Create a Canary:
+
+How: Application Monitoring -> Synthetics Canaries -> Create canary.
+
+Blueprint: Use the "Heartbeat monitoring" blueprint.
+
+Target: Paste your API Gateway or ALB URL.
+
+What it does: It spins up a hidden, headless Lambda function that acts like a real Google Chrome browser, hits your website every minute, takes a screenshot, and reports if it failed.
